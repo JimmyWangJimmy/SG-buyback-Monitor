@@ -109,15 +109,30 @@ async function scrape() {
     await page.setUserAgent(pickUA());
     await page.setViewport({ width: 1920, height: 1080 });
 
-    // First load: sets cookies via iframe
+    // First load: the punch iframe sets required cookies (_oid, _oa)
     logger.info('First page load (cookie setup)...');
-    await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await randomDelay(3000, 5000);
+    await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+    await randomDelay(5000, 8000);
 
-    // Second load: server returns table data with cookies
+    // Second load: server now returns table data because cookies are present
     logger.info('Second page load (data fetch)...');
-    await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await randomDelay(3000, 5000);
+    await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+    await randomDelay(5000, 8000);
+
+    // Wait for table to appear
+    try {
+      await page.waitForSelector('#stock-list-sgx-counter tbody tr.stock', { timeout: 15000 });
+      logger.info('Table rows detected');
+    } catch {
+      // Log page state for diagnostics
+      const title = await page.title();
+      const url = page.url();
+      const bodySnippet = await page.evaluate(() =>
+        document.body ? document.body.innerText.substring(0, 500) : 'NO BODY'
+      );
+      logger.warn(`Table not found. Title: "${title}", URL: ${url}`);
+      logger.warn(`Page snippet: ${bodySnippet}`);
+    }
 
     // Click "load more" to get all data
     let loadMoreClicks = 0;
@@ -258,6 +273,57 @@ app.get('/api/status', (req, res) => {
     cachedDate: cachedData.date,
     cronSchedule: CRON_SCHEDULE,
   });
+});
+
+// GET /api/debug - one-shot diagnostic scrape
+app.get('/api/debug', async (req, res) => {
+  let browser;
+  try {
+    const launchOptions = {
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+    };
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    browser = await puppeteer.launch(launchOptions);
+    const page = await browser.newPage();
+    await page.setUserAgent(pickUA());
+
+    // First load
+    await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+    await new Promise((r) => setTimeout(r, 6000));
+    const cookies1 = await page.cookies();
+
+    // Second load
+    await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+    await new Promise((r) => setTimeout(r, 6000));
+    const cookies2 = await page.cookies();
+
+    const title = await page.title();
+    const url = page.url();
+    const tableExists = await page.$('#stock-list-sgx-counter');
+    const rowCount = await page.$$eval('#stock-list-sgx-counter tbody tr.stock', (rows) => rows.length).catch(() => 0);
+    const allRowCount = await page.$$eval('#stock-list-sgx-counter tbody tr', (rows) => rows.length).catch(() => 0);
+    const bodySnippet = await page.evaluate(() => document.body.innerText.substring(0, 1000));
+    const tableHtml = await page.$eval('#stock-list-sgx-counter', (el) => el.outerHTML.substring(0, 2000)).catch(() => 'TABLE NOT FOUND');
+
+    res.json({
+      title,
+      url,
+      cookies_after_first_load: cookies1.map((c) => c.name),
+      cookies_after_second_load: cookies2.map((c) => c.name),
+      tableExists: !!tableExists,
+      stockRowCount: rowCount,
+      allTrCount: allRowCount,
+      bodySnippet,
+      tableHtmlSnippet: tableHtml,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, stack: err.stack });
+  } finally {
+    if (browser) await browser.close();
+  }
 });
 
 // POST /api/buybacks/refresh - manual trigger
