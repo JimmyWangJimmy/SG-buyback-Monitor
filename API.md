@@ -1,34 +1,58 @@
 # SG Buyback Monitor API Documentation
 
-Base URL: `http://<your-server>:3000`
+Base URL: `https://sg-buyback-monitor.onrender.com`
 
 ---
 
-## 1. GET /api/buybacks
+## Public Endpoints (无需鉴权)
 
-获取缓存的回购数据（最近 7 天）。直接返回缓存，不触发抓取。
+### 1. GET /api/buybacks
 
-### Query Parameters
+获取最近 7 天的 SGX 上市公司回购数据。
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `date` | string | 否 | 按日期筛选，格式 `YYYY-MM-DD` |
+#### Query Parameters
 
-### Request
+| 参数   | 类型   | 必填 | 说明                        |
+| ------ | ------ | ---- | --------------------------- |
+| `date` | string | 否   | 按日期筛选，格式 `YYYY-MM-DD` |
+
+#### Request Examples
 
 ```bash
 # 获取全部数据
-curl http://localhost:3000/api/buybacks
+curl https://sg-buyback-monitor.onrender.com/api/buybacks
 
 # 按日期筛选
-curl http://localhost:3000/api/buybacks?date=2026-04-13
+curl https://sg-buyback-monitor.onrender.com/api/buybacks?date=2026-04-13
 ```
 
-### Response `200 OK`
+```python
+import requests
+
+# 全部数据
+resp = requests.get("https://sg-buyback-monitor.onrender.com/api/buybacks")
+data = resp.json()
+
+# 按日期筛选
+resp = requests.get("https://sg-buyback-monitor.onrender.com/api/buybacks", params={"date": "2026-04-13"})
+data = resp.json()
+```
+
+```javascript
+// Node.js / Browser
+const resp = await fetch("https://sg-buyback-monitor.onrender.com/api/buybacks");
+const data = await resp.json();
+
+// 按日期筛选
+const resp2 = await fetch("https://sg-buyback-monitor.onrender.com/api/buybacks?date=2026-04-13");
+const data2 = await resp2.json();
+```
+
+#### Response `200 OK`
 
 ```json
 {
-  "date": "2026-04-14T03:40:18.523Z",
+  "date": "2026-04-14T07:08:49.451Z",
   "count": 40,
   "data": [
     {
@@ -45,100 +69,122 @@ curl http://localhost:3000/api/buybacks?date=2026-04-13
 }
 ```
 
-### Response Fields
+#### Response Fields
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `date` | string | 数据抓取时间 (ISO 8601) |
-| `count` | number | 返回的记录数 |
-| `data` | array | 回购记录数组 |
-| `data[].stockName` | string | 公司名称 |
-| `data[].sgxCode` | string | SGX 股票代码 |
-| `data[].buybackDate` | string | 回购日期 (YYYY-MM-DD) |
-| `data[].buybackVolume` | string | 回购量 |
-| `data[].buybackPrice` | string | 回购价格 |
-| `data[].dayPriceRange` | string | 当日价格区间 |
-| `data[].dayTotalVolume` | string | 当日总成交量 |
-| `data[].buybackVsTotalPct` | string | 回购占总成交量百分比 |
+| 字段                        | 类型   | 说明                              |
+| --------------------------- | ------ | --------------------------------- |
+| `date`                      | string | 数据抓取时间 (ISO 8601)           |
+| `count`                     | number | 返回的记录数                      |
+| `data`                      | array  | 回购记录数组                      |
+| `data[].stockName`          | string | 公司名称                          |
+| `data[].sgxCode`            | string | SGX 股票代码                      |
+| `data[].buybackDate`        | string | 回购日期 (`YYYY-MM-DD`)           |
+| `data[].buybackVolume`      | string | 回购量                            |
+| `data[].buybackPrice`       | string | 回购价格                          |
+| `data[].dayPriceRange`      | string | 当日价格区间                      |
+| `data[].dayTotalVolume`     | string | 当日总成交量                      |
+| `data[].buybackVsTotalPct`  | string | 回购占总成交量百分比              |
 
 ---
 
-## 2. GET /api/status
+### 2. GET /api/status
 
-获取爬虫运行状态。
+获取服务运行状态。
 
-### Request
+#### Request
 
 ```bash
-curl http://localhost:3000/api/status
+curl https://sg-buyback-monitor.onrender.com/api/status
 ```
 
-### Response `200 OK`
+#### Response `200 OK`
 
 ```json
 {
-  "lastScrapeTime": "2026-04-14T03:39:35.991Z",
-  "lastSuccess": "2026-04-14T03:40:19.737Z",
-  "lastError": null,
-  "successCount": 1,
-  "failCount": 0,
-  "isRunning": false,
-  "nextScheduled": "2026-04-14T06:00:00.000Z",
   "cachedRecords": 40,
-  "cachedDate": "2026-04-14T03:40:18.523Z",
-  "cronSchedule": "0 */6 * * *"
+  "cachedDate": "2026-04-14T07:08:49.451Z",
+  "lastUploadTime": "2026-04-14T07:08:50.500Z",
+  "uploadCount": 1
 }
 ```
 
-### Response Fields
+#### Response Fields
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `lastScrapeTime` | string\|null | 最近一次抓取开始时间 |
-| `lastSuccess` | string\|null | 最近一次成功时间 |
-| `lastError` | string\|null | 最近一次错误信息（成功后清空） |
-| `successCount` | number | 累计成功次数 |
-| `failCount` | number | 累计失败次数（3次重试全失败算1次） |
-| `isRunning` | boolean | 是否正在抓取中 |
-| `nextScheduled` | string | 下次定时抓取时间 |
-| `cachedRecords` | number | 当前缓存记录数 |
-| `cachedDate` | string\|null | 缓存数据的抓取时间 |
-| `cronSchedule` | string | Cron 表达式 |
+| 字段             | 类型        | 说明                     |
+| ---------------- | ----------- | ------------------------ |
+| `cachedRecords`  | number      | 当前缓存记录数           |
+| `cachedDate`     | string/null | 数据抓取时间             |
+| `lastUploadTime` | string/null | 最近一次上传时间         |
+| `uploadCount`    | number      | 累计上传次数             |
 
 ---
 
-## 3. POST /api/buybacks/refresh
+## Internal Endpoint (需鉴权)
 
-手动触发一次抓取。异步执行，立即返回。
+### 3. POST /api/buybacks/upload
 
-### Request
+由本地爬虫调用，上传抓取的数据到云端。需要 API Token 鉴权。
+
+#### Headers
+
+| Header        | 必填 | 说明                    |
+| ------------- | ---- | ----------------------- |
+| `Content-Type`| 是   | `application/json`      |
+| `X-API-Token` | 是   | API 密钥 (默认: `sgbuyback2026`) |
+
+也可通过 query parameter 传递 token: `?token=sgbuyback2026`
+
+#### Request Body
+
+```json
+{
+  "date": "2026-04-14T07:08:49.451Z",
+  "count": 40,
+  "data": [
+    {
+      "stockName": "TELECHOICE INTERNATIONAL",
+      "sgxCode": "T41",
+      "buybackDate": "2026-04-13",
+      "buybackVolume": "350,000",
+      "buybackPrice": "SGD 0.210",
+      "dayPriceRange": "0.210 - 0.215",
+      "dayTotalVolume": "522,600",
+      "buybackVsTotalPct": "67%"
+    }
+  ]
+}
+```
+
+#### Request Example
 
 ```bash
-curl -X POST http://localhost:3000/api/buybacks/refresh
+curl -X POST https://sg-buyback-monitor.onrender.com/api/buybacks/upload \
+  -H "Content-Type: application/json" \
+  -H "X-API-Token: sgbuyback2026" \
+  -d '{"date":"2026-04-14T00:00:00Z","count":1,"data":[{"stockName":"TEST","sgxCode":"T01","buybackDate":"2026-04-14","buybackVolume":"100","buybackPrice":"1.00","dayPriceRange":"1.00-1.00","dayTotalVolume":"1000","buybackVsTotalPct":"10%"}]}'
 ```
 
-### Response `200 OK`
+#### Response `200 OK`
 
 ```json
 {
-  "message": "Scrape triggered",
-  "status": "running"
+  "message": "OK",
+  "count": 40
 }
 ```
 
-### Response `409 Conflict`（已有抓取正在进行）
+#### Error Responses
 
-```json
-{
-  "error": "Scrape already in progress"
-}
-```
+| Status | Body                                    | 说明              |
+| ------ | --------------------------------------- | ----------------- |
+| `401`  | `{"error": "Invalid API token"}`        | Token 无效        |
+| `400`  | `{"error": "Invalid data format"}`      | Body 格式错误     |
 
 ---
 
 ## Error Handling
 
-所有接口在服务端异常时返回：
+所有接口在异常时返回：
 
 ```json
 {
@@ -146,18 +192,57 @@ curl -X POST http://localhost:3000/api/buybacks/refresh
 }
 ```
 
-| HTTP Status | 说明 |
-|-------------|------|
-| `200` | 成功 |
-| `409` | 抓取正在进行，请稍后再试 |
-| `500` | 服务端内部错误 |
+| HTTP Status | 说明                  |
+| ----------- | --------------------- |
+| `200`       | 成功                  |
+| `400`       | 请求格式错误          |
+| `401`       | 鉴权失败              |
+| `500`       | 服务端内部错误        |
 
 ---
 
+## Architecture
+
+```
+┌──────────────┐    POST /api/buybacks/upload     ┌──────────────────┐
+│  Local        │ ──────────────────────────────► │  Render Cloud     │
+│  Scraper      │    (every 6 hours)              │  API Server       │
+│  (scraper.js) │                                 │  (server.js)      │
+└──────────────┘                                  └────────┬─────────┘
+                                                           │
+                                                  GET /api/buybacks
+                                                           │
+                                                  ┌────────▼─────────┐
+                                                  │  External Users   │
+                                                  │  (API / Browser)  │
+                                                  └──────────────────┘
+```
+
+- **数据源**: sginvestors.io (SGX 上市公司回购公告)
+- **抓取频率**: 每 6 小时 (本地运行)
+- **数据范围**: 最近 7 天的回购记录
+- **更新延迟**: 数据每 6 小时更新一次
+
+---
+
+## Quick Start
+
+```bash
+# 1. 本地单次抓取并上传
+node scraper.js --api https://sg-buyback-monitor.onrender.com
+
+# 2. 本地定时模式 (每6小时自动抓取上传)
+node scraper.js --schedule --api https://sg-buyback-monitor.onrender.com
+
+# 3. 查看数据
+curl https://sg-buyback-monitor.onrender.com/api/buybacks
+```
+
 ## Environment Variables
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `PORT` | `3000` | 服务端口 |
-| `CRON_SCHEDULE` | `0 */6 * * *` | 抓取调度 Cron 表达式 |
-| `PUPPETEER_EXECUTABLE_PATH` | (auto) | Chromium 路径（Docker 中需设置） |
+| 变量            | 默认值           | 说明                      | 适用           |
+| --------------- | ---------------- | ------------------------- | -------------- |
+| `PORT`          | `3000`           | 服务端口                  | server.js      |
+| `API_TOKEN`     | `sgbuyback2026`  | 上传接口鉴权密钥          | server.js / scraper.js |
+| `API_URL`       | `https://sg-buyback-monitor.onrender.com` | 云端 API 地址 | scraper.js |
+| `CRON_SCHEDULE` | `0 */6 * * *`    | 定时抓取 Cron 表达式      | scraper.js     |
