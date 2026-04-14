@@ -10,5 +10,4 @@ services:
     environment:
       - PORT=3000
       - CRON_SCHEDULE=${CRON_SCHEDULE:-0 */6 * * *}
-      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
     restart: unless-stopped
