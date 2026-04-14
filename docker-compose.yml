@@ -1,0 +1,14 @@
+services:
+  buyback-monitor:
+    build: .
+    container_name: sg-buyback-monitor
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - PORT=3000
+      - CRON_SCHEDULE=${CRON_SCHEDULE:-0 */6 * * *}
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    restart: unless-stopped

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SG Buyback Monitor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fa; color: #333; padding: 20px; }
+    h1 { color: #2c3e50; margin-bottom: 6px; font-size: 1.6em; }
+    .subtitle { color: #7f8c8d; margin-bottom: 20px; font-size: 0.9em; }
+    .controls { margin-bottom: 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .btn {
+      color: #fff; border: none; padding: 10px 22px;
+      font-size: 0.95em; border-radius: 6px; cursor: pointer; font-weight: 600;
+      transition: background 0.2s;
+    }
+    .btn:disabled { background: #95a5a6; cursor: not-allowed; }
+    #fetchBtn { background: #27ae60; }
+    #fetchBtn:hover:not(:disabled) { background: #219a52; }
+    #refreshBtn { background: #2980b9; }
+    #refreshBtn:hover:not(:disabled) { background: #2471a3; }
+    .spinner { display: none; width: 24px; height: 24px; border: 3px solid #ddd; border-top-color: #27ae60; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status { color: #7f8c8d; font-size: 0.9em; }
+    .error { color: #e74c3c; font-weight: 600; margin: 10px 0; }
+    .info-bar {
+      background: #fff; border-radius: 8px; padding: 14px 20px; margin-bottom: 20px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.06); display: flex; gap: 30px; flex-wrap: wrap; font-size: 0.88em;
+    }
+    .info-bar .item { display: flex; flex-direction: column; gap: 2px; }
+    .info-bar .label { color: #95a5a6; font-size: 0.8em; text-transform: uppercase; }
+    .info-bar .value { color: #2c3e50; font-weight: 600; }
+    .table-wrap { overflow-x: auto; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    table { width: 100%; border-collapse: collapse; background: #fff; min-width: 900px; }
+    thead th {
+      background: #27ae60; color: #fff; padding: 12px 10px; text-align: left;
+      font-size: 0.85em; white-space: nowrap; position: sticky; top: 0;
+    }
+    thead th.text-right { text-align: right; }
+    tbody td { padding: 10px; border-bottom: 1px solid #ecf0f1; font-size: 0.88em; vertical-align: middle; }
+    tbody td.text-right { text-align: right; }
+    tbody tr:hover { background: #f5fbf8; }
+    .stock-name { font-weight: 600; color: #2980b9; }
+    .sgx-code { color: #7f8c8d; font-size: 0.85em; }
+    .highlight { background: #eafaf1; font-weight: 700; color: #27ae60; }
+    .empty { text-align: center; padding: 40px; color: #95a5a6; }
+  </style>
+</head>
+<body>
+  <h1>SGX Share Buyback Monitor</h1>
+  <p class="subtitle">Last 7 days of buyback transactions &mdash; auto-refreshed every 6 hours</p>
+
+  <div class="info-bar" id="infoBar" style="display:none;">
+    <div class="item"><span class="label">Last Scrape</span><span class="value" id="lastScrape">-</span></div>
+    <div class="item"><span class="label">Next Scheduled</span><span class="value" id="nextScrape">-</span></div>
+    <div class="item"><span class="label">Records</span><span class="value" id="recordCount">-</span></div>
+    <div class="item"><span class="label">Success / Fail</span><span class="value" id="scrapeCount">-</span></div>
+  </div>
+
+  <div class="controls">
+    <button class="btn" id="fetchBtn">Load Cached Data</button>
+    <button class="btn" id="refreshBtn">Trigger Refresh</button>
+    <div class="spinner" id="spinner"></div>
+    <span class="status" id="status"></span>
+  </div>
+  <div class="error" id="error"></div>
+
+  <div class="table-wrap">
+    <table id="dataTable" style="display:none;">
+      <thead>
+        <tr>
+          <th>Stock / REIT</th>
+          <th>Buyback Date</th>
+          <th class="text-right">Buyback Volume</th>
+          <th class="text-right">Buyback Price</th>
+          <th class="text-right">Day Price Range</th>
+          <th class="text-right">Day Total Volume</th>
+          <th class="text-right">Buyback vs Total %</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <div class="empty" id="emptyMsg">Loading data...</div>
+  </div>
+
+  <script>
+    const fetchBtn = document.getElementById('fetchBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const spinner = document.getElementById('spinner');
+    const status = document.getElementById('status');
+    const errorDiv = document.getElementById('error');
+    const tableBody = document.getElementById('tableBody');
+    const dataTable = document.getElementById('dataTable');
+    const emptyMsg = document.getElementById('emptyMsg');
+    const infoBar = document.getElementById('infoBar');
+
+    async function loadStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const s = await res.json();
+        infoBar.style.display = 'flex';
+        document.getElementById('lastScrape').textContent =
+          s.lastSuccess ? new Date(s.lastSuccess).toLocaleString() : (s.isRunning ? 'Scraping...' : 'Never');
+        document.getElementById('nextScrape').textContent =
+          s.nextScheduled ? new Date(s.nextScheduled).toLocaleString() : '-';
+        document.getElementById('recordCount').textContent = s.cachedRecords || 0;
+        document.getElementById('scrapeCount').textContent = `${s.successCount} / ${s.failCount}`;
+      } catch {}
+    }
+
+    async function loadData() {
+      fetchBtn.disabled = true;
+      spinner.style.display = 'block';
+      status.textContent = 'Loading...';
+      errorDiv.textContent = '';
+      tableBody.innerHTML = '';
+      dataTable.style.display = 'none';
+      emptyMsg.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/buybacks');
+        if (!res.ok) throw new Error(`Server error: ${res.status}`);
+        const json = await res.json();
+        if (json.error) throw new Error(json.error);
+
+        if (!json.data || json.data.length === 0) {
+          emptyMsg.textContent = 'No data yet. Scraper may still be running — check back in a minute.';
+          emptyMsg.style.display = 'block';
+        } else {
+          json.data.forEach(row => {
+            const pct = parseInt(row.buybackVsTotalPct) || 0;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td><span class="stock-name">${esc(row.stockName)}</span><br><span class="sgx-code">(${esc(row.sgxCode)})</span></td>
+              <td>${esc(row.buybackDate)}</td>
+              <td class="text-right">${esc(row.buybackVolume)}</td>
+              <td class="text-right">${esc(row.buybackPrice)}</td>
+              <td class="text-right">${esc(row.dayPriceRange)}</td>
+              <td class="text-right">${esc(row.dayTotalVolume)}</td>
+              <td class="text-right ${pct >= 50 ? 'highlight' : ''}">${esc(row.buybackVsTotalPct)}</td>
+            `;
+            tableBody.appendChild(tr);
+          });
+          dataTable.style.display = 'table';
+          status.textContent = `${json.data.length} records (scraped ${json.date ? new Date(json.date).toLocaleString() : 'N/A'})`;
+        }
+      } catch (err) {
+        errorDiv.textContent = 'Error: ' + err.message;
+        emptyMsg.style.display = 'block';
+        emptyMsg.textContent = 'Failed to load data.';
+      } finally {
+        fetchBtn.disabled = false;
+        spinner.style.display = 'none';
+      }
+    }
+
+    refreshBtn.addEventListener('click', async () => {
+      refreshBtn.disabled = true;
+      try {
+        const res = await fetch('/api/buybacks/refresh', { method: 'POST' });
+        const json = await res.json();
+        status.textContent = json.error || 'Scrape triggered — data will update in ~30s';
+        if (!json.error) {
+          setTimeout(() => { loadData(); loadStatus(); }, 30000);
+        }
+      } catch (err) {
+        status.textContent = 'Failed to trigger refresh';
+      } finally {
+        setTimeout(() => { refreshBtn.disabled = false; }, 5000);
+      }
+    });
+
+    fetchBtn.addEventListener('click', () => { loadData(); loadStatus(); });
+
+    function esc(str) {
+      const d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+
+    // Auto-load on page open
+    loadData();
+    loadStatus();
+    // Refresh status every 60s
+    setInterval(loadStatus, 60000);
+  </script>
+</body>
+</html>
