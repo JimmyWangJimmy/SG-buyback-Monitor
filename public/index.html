@@ -52,15 +52,13 @@
   <p class="subtitle">Last 7 days of buyback transactions &mdash; auto-refreshed every 6 hours</p>
 
   <div class="info-bar" id="infoBar" style="display:none;">
-    <div class="item"><span class="label">Last Scrape</span><span class="value" id="lastScrape">-</span></div>
-    <div class="item"><span class="label">Next Scheduled</span><span class="value" id="nextScrape">-</span></div>
+    <div class="item"><span class="label">Last Upload</span><span class="value" id="lastUpload">-</span></div>
     <div class="item"><span class="label">Records</span><span class="value" id="recordCount">-</span></div>
-    <div class="item"><span class="label">Success / Fail</span><span class="value" id="scrapeCount">-</span></div>
+    <div class="item"><span class="label">Uploads</span><span class="value" id="uploadCount">-</span></div>
   </div>
 
   <div class="controls">
-    <button class="btn" id="fetchBtn">Load Cached Data</button>
-    <button class="btn" id="refreshBtn">Trigger Refresh</button>
+    <button class="btn" id="fetchBtn">Load Data</button>
     <div class="spinner" id="spinner"></div>
     <span class="status" id="status"></span>
   </div>
@@ -86,7 +84,6 @@
 
   <script>
     const fetchBtn = document.getElementById('fetchBtn');
-    const refreshBtn = document.getElementById('refreshBtn');
     const spinner = document.getElementById('spinner');
     const status = document.getElementById('status');
     const errorDiv = document.getElementById('error');
@@ -100,12 +97,10 @@
         const res = await fetch('/api/status');
         const s = await res.json();
         infoBar.style.display = 'flex';
-        document.getElementById('lastScrape').textContent =
-          s.lastSuccess ? new Date(s.lastSuccess).toLocaleString() : (s.isRunning ? 'Scraping...' : 'Never');
-        document.getElementById('nextScrape').textContent =
-          s.nextScheduled ? new Date(s.nextScheduled).toLocaleString() : '-';
+        document.getElementById('lastUpload').textContent =
+          s.lastUploadTime ? new Date(s.lastUploadTime).toLocaleString() : (s.cachedDate ? new Date(s.cachedDate).toLocaleString() : 'Never');
         document.getElementById('recordCount').textContent = s.cachedRecords || 0;
-        document.getElementById('scrapeCount').textContent = `${s.successCount} / ${s.failCount}`;
+        document.getElementById('uploadCount').textContent = s.uploadCount || 0;
       } catch {}
     }
 
@@ -154,22 +149,6 @@
         spinner.style.display = 'none';
       }
     }
-
-    refreshBtn.addEventListener('click', async () => {
-      refreshBtn.disabled = true;
-      try {
-        const res = await fetch('/api/buybacks/refresh', { method: 'POST' });
-        const json = await res.json();
-        status.textContent = json.error || 'Scrape triggered — data will update in ~30s';
-        if (!json.error) {
-          setTimeout(() => { loadData(); loadStatus(); }, 30000);
-        }
-      } catch (err) {
-        status.textContent = 'Failed to trigger refresh';
-      } finally {
-        setTimeout(() => { refreshBtn.disabled = false; }, 5000);
-      }
-    });
 
     fetchBtn.addEventListener('click', () => { loadData(); loadStatus(); });
 

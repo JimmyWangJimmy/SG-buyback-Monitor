@@ -1,0 +1,10 @@
+{
+  "name": "sg-buyback-monitor-server",
+  "version": "3.0.0",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.21.0",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0"
+  }
+}

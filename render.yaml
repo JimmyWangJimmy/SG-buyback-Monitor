@@ -7,5 +7,5 @@ services:
     envVars:
       - key: PORT
         value: 3000
-      - key: CRON_SCHEDULE
-        value: "0 */6 * * *"
+      - key: API_TOKEN
+        value: sgbuyback2026
