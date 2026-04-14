@@ -60,11 +60,19 @@ async function scrape() {
 
     log('First page load (cookie setup)...');
     await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-    await randomDelay(4000, 6000);
+    await new Promise((r) => setTimeout(r, 6000));
 
     log('Second page load (data fetch)...');
     await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-    await randomDelay(4000, 6000);
+    await new Promise((r) => setTimeout(r, 6000));
+
+    // Wait for table data to appear
+    try {
+      await page.waitForSelector('#stock-list-sgx-counter tbody tr.stock td a', { timeout: 15000 });
+      log('Table data loaded');
+    } catch {
+      log('Warning: table data not found after wait');
+    }
 
     // Click "load more"
     let clicks = 0;
