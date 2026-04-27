@@ -3,7 +3,7 @@
  *
  * Usage:
  *   node scraper.js                          # one-shot scrape + upload
- *   node scraper.js --schedule               # run every 6 hours
+ *   node scraper.js --schedule               # run on CRON_SCHEDULE (default every 3h)
  *   node scraper.js --api http://your-url    # custom API endpoint
  */
 
@@ -19,7 +19,7 @@ puppeteer.use(StealthPlugin());
 // ─── Config ──────────────────────────────────────────────────────────
 const API_URL = getArg('--api') || process.env.API_URL || 'https://sg-buyback-monitor.onrender.com';
 const API_TOKEN = getArg('--token') || process.env.API_TOKEN || 'sgbuyback2026';
-const CRON_SCHEDULE = process.env.CRON_SCHEDULE || '0 */6 * * *';
+const CRON_SCHEDULE = process.env.CRON_SCHEDULE || '0 */3 * * *';
 const MAX_RETRIES = 3;
 const SCHEDULE_MODE = process.argv.includes('--schedule');
 const TARGET_URL = 'https://sginvestors.io/news/sgx-listed-companies-share-buy-back';
@@ -48,10 +48,14 @@ function randomDelay(min = 2000, max = 5000) {
 async function scrape() {
   let browser;
   try {
-    browser = await puppeteer.launch({
+    const launchOpts = {
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
+    };
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      launchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    browser = await puppeteer.launch(launchOpts);
 
     const page = await browser.newPage();
     const ua = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
@@ -182,8 +186,51 @@ function upload(data) {
   });
 }
 
+function reportScrapeStatus(body) {
+  return new Promise((resolve) => {
+    const url = new URL(API_URL + '/api/scrape-status');
+    const transport = url.protocol === 'https:' ? https : http;
+    const payload = JSON.stringify(body);
+
+    const req = transport.request(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+          'X-API-Token': API_TOKEN,
+        },
+      },
+      (res) => {
+        let responseBody = '';
+        res.on('data', (d) => (responseBody += d));
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            log(`scrape-status OK (${body.ok === false ? 'failure recorded' : 'success'})`);
+            resolve(true);
+          } else {
+            log(`scrape-status HTTP ${res.statusCode}: ${responseBody}`);
+            resolve(false);
+          }
+        });
+      }
+    );
+    req.on('error', (e) => {
+      log(`scrape-status request failed: ${e.message}`);
+      resolve(false);
+    });
+    req.write(payload);
+    req.end();
+  });
+}
+
 // ─── Run ─────────────────────────────────────────────────────────────
 async function run() {
+  let lastError = null;
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       log(`Scrape attempt ${attempt}/${MAX_RETRIES}...`);
@@ -191,14 +238,17 @@ async function run() {
 
       if (result.count === 0) {
         log('Warning: 0 records found, skipping upload');
+        await reportScrapeStatus({ ok: true });
         return;
       }
 
       log(`Uploading ${result.count} records to ${API_URL}...`);
       const resp = await upload(result);
       log(`Upload OK: ${resp.count} records`);
+      await reportScrapeStatus({ ok: true });
       return;
     } catch (err) {
+      lastError = err;
       log(`Attempt ${attempt} failed: ${err.message}`);
       if (attempt < MAX_RETRIES) {
         const wait = Math.pow(3, attempt) * 10;
@@ -207,17 +257,21 @@ async function run() {
       }
     }
   }
-  log('All attempts failed!');
+
+  const msg = lastError?.message || 'Unknown error';
+  log(`All ${MAX_RETRIES} attempts failed: ${msg}`);
+  await reportScrapeStatus({ ok: false, error: msg });
+  throw new Error(`Scrape failed after ${MAX_RETRIES} attempts: ${msg}`);
 }
 
 // ─── Entry ───────────────────────────────────────────────────────────
 if (SCHEDULE_MODE) {
   log(`Scheduler mode: ${CRON_SCHEDULE}`);
   log(`API target: ${API_URL}`);
-  run(); // Run immediately
+  run().catch((e) => log(`Initial run error: ${e.message}`));
   cron.schedule(CRON_SCHEDULE, () => {
     log('Scheduled scrape triggered');
-    run();
+    run().catch((e) => log(`Scheduled run error: ${e.message}`));
   });
 } else {
   log('One-shot mode');

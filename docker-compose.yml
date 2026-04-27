@@ -9,5 +9,5 @@ services:
       - ./logs:/app/logs
     environment:
       - PORT=3000
-      - CRON_SCHEDULE=${CRON_SCHEDULE:-0 */6 * * *}
+      - CRON_SCHEDULE=${CRON_SCHEDULE:-0 */3 * * *}
     restart: unless-stopped

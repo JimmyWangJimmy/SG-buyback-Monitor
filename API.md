@@ -104,22 +104,28 @@ curl https://sg-buyback-monitor.onrender.com/api/status
   "cachedRecords": 40,
   "cachedDate": "2026-04-14T07:08:49.451Z",
   "lastUploadTime": "2026-04-14T07:08:50.500Z",
-  "uploadCount": 1
+  "uploadCount": 1,
+  "lastScrapeError": null,
+  "lastScrapeOkAt": "2026-04-14T08:00:00.000Z"
 }
 ```
 
 #### Response Fields
 
-| 字段             | 类型        | 说明                     |
-| ---------------- | ----------- | ------------------------ |
-| `cachedRecords`  | number      | 当前缓存记录数           |
-| `cachedDate`     | string/null | 数据抓取时间             |
-| `lastUploadTime` | string/null | 最近一次上传时间         |
-| `uploadCount`    | number      | 累计上传次数             |
+| 字段               | 类型        | 说明 |
+| ------------------ | ----------- | ---- |
+| `cachedRecords`    | number      | 当前缓存记录数 |
+| `cachedDate`       | string/null | 数据抓取时间 |
+| `lastUploadTime`   | string/null | 最近一次上传时间 |
+| `uploadCount`      | number      | 累计上传次数 |
+| `lastScrapeError`  | object/null | 爬虫在重试耗尽后上报的错误；成功后会清空为 `null` |
+| `lastScrapeError.message` | string | 错误摘要 |
+| `lastScrapeError.at`      | string | ISO 时间 |
+| `lastScrapeOkAt`   | string/null | 爬虫最近一次成功上报的时间 |
 
 ---
 
-## Internal Endpoint (需鉴权)
+## Internal Endpoints (需鉴权)
 
 ### 3. POST /api/buybacks/upload
 
@@ -179,6 +185,42 @@ curl -X POST https://sg-buyback-monitor.onrender.com/api/buybacks/upload \
 | ------ | --------------------------------------- | ----------------- |
 | `401`  | `{"error": "Invalid API token"}`        | Token 无效        |
 | `400`  | `{"error": "Invalid data format"}`      | Body 格式错误     |
+
+---
+
+### 4. POST /api/scrape-status
+
+由爬虫在**一次任务**结束时调用：成功上传（或 0 条跳过上传）时上报成功，或在 **3 次重试仍失败** 后上报失败。服务端会写入日志，并把失败信息持久化到 `data/scrape-meta.json`，供首页展示。
+
+#### Headers
+
+与 `POST /api/buybacks/upload` 相同：`X-API-Token` 或 `?token=`。
+
+#### Request Body
+
+成功：
+
+```json
+{ "ok": true }
+```
+
+失败（`error` 建议为最后一次尝试的错误信息，长度服务端最多保留约 2000 字符）：
+
+```json
+{ "ok": false, "error": "net::ERR_CONNECTION_RESET at ..." }
+```
+
+#### Response `200 OK`
+
+```json
+{ "message": "OK" }
+```
+
+或失败记录：
+
+```json
+{ "message": "Recorded" }
+```
 
 ---
 

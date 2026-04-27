@@ -1,0 +1,40 @@
+# Runs the Puppeteer scraper on a schedule and uploads to your Render (or other) API.
+# Repo → Settings → Secrets and variables → Actions:
+#   API_URL   — e.g. https://sg-buyback-monitor.onrender.com (no trailing slash)
+#   API_TOKEN — must match the web service API_TOKEN
+
+name: Scheduled scrape
+
+on:
+  schedule:
+    # Every 3 hours at minute 5 UTC (cron uses UTC)
+    - cron: '5 */3 * * *'
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Require API secrets
+        run: |
+          if [ -z "${{ secrets.API_URL }}" ] || [ -z "${{ secrets.API_TOKEN }}" ]; then
+            echo "Add repository secrets API_URL and API_TOKEN (see workflow file header)."
+            exit 1
+          fi
+
+      - name: Run scraper
+        env:
+          API_URL: ${{ secrets.API_URL }}
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        run: node scraper.js
